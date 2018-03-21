@@ -113,8 +113,9 @@ if [ -n "$ADMIN_EMAIL" ] && [ -n "$ADMIN_PASSWORD" ]; then
     fi
 fi
 
-chown -R www-data:www-data storage/
-chown -R www-data:www-data bootstrap/cache/
+# TODO: Debug why we need these and why they don't work.
+# chown -R www-data:www-data storage/
+# chown -R www-data:www-data bootstrap/cache/
 
 # do we have configs for Session management ?
 jwt_vars=("JWT_TTL" "JWT_REFRESH_TTL" "ALLOW_FOREVER_SESSIONS")
@@ -132,8 +133,16 @@ if [ -n "$LOG_TO_STDOUT" ]; then
   tail --pid $$ -F /opt/dreamfactory/storage/logs/dreamfactory.log &
 fi
 
+# TODO: This shouldn't exist according to Dockerfile
+rm -f /etc/nginx/sites-enabled/default
+
 # start php7.1-fpm
-service php7.1-fpm start
+# service php7.1-fpm start
+php-fpm7.1
+
+echo "Application ready for connections on port $PORT."
+
+sed -i "s/8080/${PORT}/" /etc/nginx/sites-available/dreamfactory.conf
 
 # start nginx
 exec /usr/sbin/nginx -g "daemon off;"

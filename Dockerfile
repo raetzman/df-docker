@@ -94,18 +94,6 @@ RUN curl -sS https://getcomposer.org/installer | php && \
     mv composer.phar /usr/local/bin/composer && \
     chmod +x /usr/local/bin/composer
 
-
-# Configure Nginx/php-fpm
-RUN rm /etc/nginx/sites-enabled/default
-ADD dreamfactory.conf /etc/nginx/sites-available/dreamfactory.conf
-RUN ln -s /etc/nginx/sites-available/dreamfactory.conf /etc/nginx/sites-enabled/dreamfactory.conf && \
-    sed -i "s/pm.max_children = 5/pm.max_children = 5000/" /etc/php/7.1/fpm/pool.d/www.conf && \
-    sed -i "s/pm.start_servers = 2/pm.start_servers = 150/" /etc/php/7.1/fpm/pool.d/www.conf && \
-    sed -i "s/pm.min_spare_servers = 1/pm.min_spare_servers = 100/" /etc/php/7.1/fpm/pool.d/www.conf && \
-    sed -i "s/pm.max_spare_servers = 3/pm.max_spare_servers = 200/" /etc/php/7.1/fpm/pool.d/www.conf && \
-    sed -i "s/worker_connections 768;/worker_connections 2048;/" /etc/nginx/nginx.conf && \
-    sed -i "s/keepalive_timeout 65;/keepalive_timeout 10;/" /etc/nginx/nginx.conf
-
 # get app src
 RUN git clone https://github.com/dreamfactorysoftware/dreamfactory.git /opt/dreamfactory
 
@@ -115,10 +103,43 @@ WORKDIR /opt/dreamfactory
 RUN composer install --no-dev && \
     php artisan df:env --db_connection=sqlite --df_install=Docker && \
     chown -R www-data:www-data /opt/dreamfactory
+
+# A permissions hack that is probably not needed. TODO: Remove and see if it runs fine.
+RUN chmod -R a+wr /opt/dreamfactory
+
+# DEBUGGING
+RUN apt-get install vim -y
+
+# Configure Nginx/php-fpm
+# Remove the default nginx config (which causes nginx to die attempting to accessing root-restricted port 80)
+# TODO: This doesn't seem to have any effect. The default still exists and must be deleted in the docker-entry.sh
+RUN rm -f /etc/nginx/sites-enabled/default
+
+ADD dreamfactory.conf /etc/nginx/sites-available/dreamfactory.conf
+RUN ln -s /etc/nginx/sites-available/dreamfactory.conf /etc/nginx/sites-enabled/dreamfactory.conf && \
+    sed -i "s/pm.max_children = 5/pm.max_children = 5000/" /etc/php/7.1/fpm/pool.d/www.conf && \
+    sed -i "s/pm.start_servers = 2/pm.start_servers = 150/" /etc/php/7.1/fpm/pool.d/www.conf && \
+    sed -i "s/pm.min_spare_servers = 1/pm.min_spare_servers = 100/" /etc/php/7.1/fpm/pool.d/www.conf && \
+    sed -i "s/pm.max_spare_servers = 3/pm.max_spare_servers = 200/" /etc/php/7.1/fpm/pool.d/www.conf && \
+    sed -i "s/worker_connections 768;/worker_connections 2048;/" /etc/nginx/nginx.conf && \
+    sed -i "s/keepalive_timeout 65;/keepalive_timeout 10;/" /etc/nginx/nginx.conf
+
+RUN sed -i "s/pid = \/run\/php/pid = \/tmp/" /etc/php/7.1/fpm/php-fpm.conf && \
+    sed -i "s/listen = \/run\/php/listen = \/tmp/" /etc/php/7.1/fpm/pool.d/www.conf && \
+    sed -i "s/listen.owner = www-data/listen.owner = dyno/" /etc/php/7.1/fpm/pool.d/www.conf && \
+    sed -i "s/listen.group = www-data/listen.group = dyno/" /etc/php/7.1/fpm/pool.d/www.conf
+
 ADD docker-entrypoint.sh /docker-entrypoint.sh
+
 # set proper permission to docker-entrypoint.sh script and forward error logs to docker log collector
 RUN chmod +x /docker-entrypoint.sh && ln -sf /dev/stderr /var/log/nginx/error.log && rm -rf /var/lib/apt/lists/*
 
+# Irrelevant on Heroku
 EXPOSE 80
+
+# Because we chown /opt/dreamfactory above and then do again in the script...
+# TODO: This doesn't work (on heroku, at least). The user is a random UID and group 'dyno'
+# Until this is resolved, we've moved all the disk access to /tmp
+USER www-data
 
 CMD ["/docker-entrypoint.sh"]
