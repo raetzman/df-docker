@@ -7,9 +7,15 @@ services:
       MYSQL_USER: df_admin
       MYSQL_PASSWORD: df_admin
     image: mysql
+    networks:
+      - net
+    restart: always
 
   redis:
     image: redis
+    networks:
+      - net
+    restart: always
 
   web:
     environment:
@@ -23,11 +29,18 @@ services:
       CACHE_HOST: redis
       CACHE_DATABASE: 0
       CACHE_PORT: 6379
+    networks:
+      - net
     volumes:
       - df-storage:/opt/dreamfactory/storage
     build: .
     ports:
-      - "80:80"
+      - "6380:80"
+    restart: always
+
 volumes:
   df-storage:
     driver: local
+
+networks:
+  net:
